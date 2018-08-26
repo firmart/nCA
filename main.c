@@ -24,9 +24,11 @@
 
 void init() {
     initscr();             /* ncurses init                        */
-    refresh();             /* refresh stdscr so that 
+    refresh();             /* refresh stdscr so that
                               children windows could be displayed */
     start_color();         /* use colors                          */
+    use_default_colors();  /* use terminal default colors when we
+                              initialize color in pair with -1    */
     raw();                 /* raw mode                            */
     noecho();              /* do not echo user input              */
     keypad(stdscr, TRUE);  /* enable functional keys              */
@@ -64,13 +66,15 @@ typedef struct state_t {
     int radius;
 } state_t;
 
-void setxy(state_t* state, int x, int y, int value) {
+void setxy(state_t *state, int x, int y, int value) {
     int r = state->radius;
-    if (abs(x) <= r && abs(y) <= r)
+
+    if (abs(x) <= r && abs(y) <= r) {
         state->terrain[r + y - 1][r + x - 1] = value;
+    }
 }
 
-void set_frontier(state_t* state, int fr) {
+void set_frontier(state_t *state, int fr) {
     for (int i = -fr; i <= fr; i++) {
         setxy(state, i, fr, fr);
         setxy(state, i, -fr, fr);
@@ -79,21 +83,25 @@ void set_frontier(state_t* state, int fr) {
     }
 }
 
-int getxy(state_t* state, int x, int y) {
+int getxy(state_t *state, int x, int y) {
     int r = state->radius;
-    if (abs(x) <= r && abs(y) <= r)
+
+    if (abs(x) <= r && abs(y) <= r) {
         return state->terrain[r + y - 1][r + x - 1];
-    else 
+
+    } else {
         return 0;
+    }
 }
 
 int **create_terrain(int radius) {
     int size = radius * 2 - 1;
-    int **terrain = malloc(size * sizeof(int*));
+    int **terrain = malloc(size * sizeof(int *));
 
     for (int i = 0; i < size; ++i) {
         terrain[i] = calloc(size, sizeof(int));
     }
+
     return terrain;
 }
 
@@ -104,34 +112,40 @@ state_t *create_state(int radius) {
     return state;
 }
 
-void free_state(state_t* state) {
+void free_state(state_t *state) {
     int size = state->radius * 2 - 1;
-    for(int i = 0; i < size; ++i) {
+
+    for (int i = 0; i < size; ++i) {
         free(state->terrain[i]);
     }
+
     free(state->terrain);
     free(state);
 }
 
-void print_state(state_t* state) {
+void print_state(WINDOW *win, int sy, int sx, state_t *state) {
     int size = state->radius * 2 - 1;
+
+    wmove(win, sy, sx);
+
     for (int i = 0; i < size; ++i) {
         for (int j = 0; j < size; ++j) {
-            printf("%-4d", state->terrain[i][j]);
+            mvwprintw(win, sy + i, sx + j,  "%d", state->terrain[i][j]);
         }
-        puts("");
     }
-    puts("");
+
 }
 
-void increase_size(state_t* state, int size) {
+void increase_size(state_t *state, int size) {
     int new_radius = state->radius + size;
     int new_side_len = new_radius * 2 - 1;
     int old_side_len = state->radius * 2 - 1;
     int **new_terrain = create_terrain(new_radius);
+
     for (int i = size; i < new_side_len - size; i++) {
         memcpy(&new_terrain[i][size], state->terrain[i - size], old_side_len * sizeof(int));
     }
+
     state->radius = new_radius;
     state->terrain = new_terrain;
 }
@@ -202,12 +216,17 @@ void win_show(WINDOW *win, char *label, int label_color) {
 int main(int argc, char *argv[]) {
     init();
 
-    init_pair(1, COLOR_WHITE, COLOR_BLACK);
-    WINDOW* win_terrain = newwin(LINES, LINES * 2,0,2);
+    init_pair(1, COLOR_WHITE, -1);
+    WINDOW *win_terrain = newwin(LINES - 1, LINES * 2, 0, 2);
     win_show(win_terrain, "Terrain window", 1);
-    
+    state_t *state = create_state(10);
+    for (int i = 0; i < 10; i++) {
+        set_frontier(state, i);
+    }
+    print_state(win_terrain, 3, 2, state);
+    wrefresh(win_terrain);
     //mainLoop();
-    
+
     getch();
 
     endwin();
