@@ -22,8 +22,15 @@
 #define CTRL(c) ((c) & 037)
 #endif
 
+typedef enum tm_t {
+    T_CONTINUOUS,
+    T_WALL,
+    T_UNLIMITED
+} tm_t;
+
 /* Structures */
 
+/* firstly implement LTL rules */
 
 typedef struct rule_t {
     int range;
@@ -37,12 +44,13 @@ typedef struct rule_t {
 } rule_t;
 
 typedef struct state_t {
-    int terrain_mode; /* 0 = continuous mode, 1 = wall mode, 2 = unlimited */
+    tm_t terrain_mode; /* 0 = continuous mode, 1 = wall mode, 2 = unlimited */
     int **terrain;
     int radius;
     int generation;
     char* rule_str;
     rule_t* rule;
+    int** neighborhood;
 } state_t;
 
 /* Globals */
@@ -80,12 +88,67 @@ void init() {
     init_colors();
 }
 
+/* Neighborhood-related functions */
+
+int dist_manhattan(int x1, int y1, int x2, int y2) {
+    return abs(y1 - y2) + abs(x1 - x2);
+}
+
+int** neighbor_create(rule_t* rule) {
+    int size = (rule->range * 2) + 1;
+    int** neighborhood = malloc(size * sizeof(int*));
+
+    for (int i = 0; i < size; ++i) {
+        neighborhood[i] = calloc(size, sizeof(int));
+    }
+
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size; ++j) {
+
+            if (i == rule->range && j == rule->range) {
+                if (rule->middle_included)
+                    neighborhood[i][j] = 1;
+                else 
+                    continue;
+            }
+
+            if (rule->neighborhood_type == 'N' && dist_manhattan(i, j, rule->range, rule->range) <= rule->range) {
+                neighborhood[i][j] = 1;
+            } else if (rule->neighborhood_type == 'M') {
+                neighborhood[i][j] = 1;
+            }
+        }
+    }
+    return neighborhood;
+}
+
+/* TODO - Only support wall mode for the momment. 
+ *        Implement
+ *          - unlimited mode
+ *          - continuous mode
+ */
+
+int neighbor_count(state_t* state, int x, int y) {
+    int counter = 0, i, j, k;
+    int** neighbor = state->neighborhood;
+    if (state->terrain_mode == T_WALL) {
+        /* TODO */ 
+    }
+
+    return counter;
+}
+
 /* Rule-related functions */
 
 rule_t* rule_create(char* rule_str) {
     rule_t* rule = malloc(sizeof(rule_t));
     sscanf(rule_str, "R%d,C%d,M%d,S%d..%d,B%d..%d,N%c", &rule->range, &rule->n_states, &rule->middle_included, &rule->s_min, &rule->s_max, &rule->b_min, &rule->b_max, &rule->neighborhood_type);
     return rule;
+}
+
+
+void rule_apply(state_t* state) {
+    
 }
 
 /* State-related functions */
@@ -101,6 +164,9 @@ int state_getyx(state_t *state, int y, int x) {
     }
 }
 
+/* TODO: - consider terrain mode 
+ *          - continuous/wall mode : draw limit
+ * */
 void print_state(WINDOW *win, state_t *state, int cy, int cx) {
 
     int sy = 3, sx = 1, height = 0, width = 0;
@@ -149,8 +215,10 @@ int **create_terrain(int radius) {
 
 state_t *create_state(int radius) {
     state_t *state = malloc(sizeof(state_t));
+    state->terrain_mode = 1; /* temporarily just support wall mode */
     state->rule_str = strdup("R1,C0,M0,S2..3,B3..3,NM"); /* temporarily just support Conway's game of life */
     state->rule = rule_create(state->rule_str);
+    state->neighborhood = neighbor_create(state->rule);
     state->radius = radius;
     state->generation = 0;
     state->terrain = create_terrain(radius);
@@ -164,7 +232,13 @@ void free_state(state_t *state) {
         free(state->terrain[i]);
     }
 
+    //for (int i = 0; i < size; ++i) {
+    //    free(state->neighborhood[i]);
+    //}
+
     free(state->terrain);
+    free(state->rule_str);
+    free(state->rule);
     free(state);
 }
 
@@ -185,6 +259,7 @@ void increase_size(state_t *state, int size) {
     state->terrain = new_terrain;
 }
 
+
 void mainLoop(WINDOW *win_terrain, state_t *state) {
     int c, cx = 0, cy = 0;
 
@@ -196,7 +271,9 @@ void mainLoop(WINDOW *win_terrain, state_t *state) {
         switch (c) {
 
             case 'n' :
-                //apply_rule(state); 
+                rule_apply(state); 
+                print_state(win_terrain, state, cy, cx);
+                wrefresh(win_terrain);
                 break;
             case KEY_DOWN:
                 print_state(win_terrain, state, ++cy, cx);
