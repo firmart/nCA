@@ -1,0 +1,2 @@
+# nCA
+ncurses Cellular Automata
