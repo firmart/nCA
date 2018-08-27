@@ -6,6 +6,7 @@
  *   - parse http://www.mirekw.com/ca/ca_files_formats.html
  *   - palette
  *   - terrain : move around
+ *   - HashLife Algorithm
  * */
 
 #include <stdio.h>
@@ -35,7 +36,7 @@
     _a < _b ? _a : _b; })
 
 typedef enum tm_t {
-    T_CONTINUOUS,
+    T_CONTINUOUS, /* Toroidal */
     T_WALL,
     T_UNLIMITED
 } tm_t;
@@ -61,6 +62,7 @@ typedef struct state_t {
     int **terrain;
     int radius;
     int generation;
+    int population;
     char *rule_str;
     rule_t *rule;
     int **neighborhood;
@@ -205,7 +207,10 @@ void rule_apply(state_t *state) {
                 if (nc >= state->rule->s_min && nc <= state->rule->s_max) {
                     continue;
                 } else {
-                    state_setyx(state, i, j, (st + 1) % state->rule->n_states);
+                    int new_st = (st + 1) % state->rule->n_states;
+                    state_setyx(state, i, j, new_st);
+                    if (new_st == 0) state->population--;
+
                 }
             } 
             /* dead case */
@@ -213,6 +218,7 @@ void rule_apply(state_t *state) {
                 if (nc >= state->rule->b_min && nc <= state->rule->b_max) {
                     /* get born */
                     state_setyx(state, i, j, 1);
+                    state->population++;
                 }
             }
         }
@@ -247,7 +253,7 @@ void state_print(WINDOW *win, state_t *state, int cy, int cx) {
 
         for (int j = 0; j < width - 2; ++j) {
             int value = state_getyx(state, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
-            mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
+     //       mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
             mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 5 : 0, NULL);
         }
     }
@@ -269,13 +275,17 @@ void state_set_frontier(state_t *state, int fr) {
         state_setyx(state, fr, i, fr);
         state_setyx(state, -fr, i, fr);
     }
+    state->population = fr * 8 ;
 }
 
 void state_set_random(state_t* state, double prob) {
     for (int i = -state->radius; i <= state->radius; i++) {
         for (int j = -state->radius; j <= state->radius; j++) {
             double rd = (double) rand() / RAND_MAX;
-            if (rd > prob) state_setyx(state, i, j, (rand() % state->rule->n_states) + 1);
+            if (rd > prob) { 
+                state_setyx(state, i, j, (rand() % (state->rule->n_states - 1)) + 1);
+                state->population++;
+            }
         }
     }
 }
@@ -292,14 +302,15 @@ int **create_terrain(int radius) {
     return terrain;
 }
 
-state_t *create_state(int radius) {
+state_t *create_state(int radius, char* rulestring) {
     state_t *state = malloc(sizeof(state_t));
     state->terrain_mode = 1; /* temporarily just support wall mode */
-    state->rule_str = strdup("R1,C0,M0,S2..3,B3..3,NM"); /* temporarily just support Conway's game of life */
+    state->rule_str = strdup(rulestring); /* temporarily just support Conway's game of life */
     state->rule = rule_create(state->rule_str);
     state->neighborhood = neighbor_create(state->rule);
     state->radius = radius;
     state->generation = 0;
+    state->population = 0;
     state->terrain = create_terrain(radius);
     return state;
 }
@@ -389,13 +400,14 @@ void mainLoop(WINDOW *win_terrain, state_t *state) {
         mvwprintw(win_info, 3, 2, "cursor : (%d, %d)", cx, cy);
         mvwprintw(win_info, 4, 2, "neighbor count : %d", neighbor_count(state, cy, cx));
         mvwprintw(win_info, 5, 2, "generation : %d", state->generation);
-        mvwprintw(win_info, 6, 2, "rule string : %s", state->rule_str);
-        mvwprintw(win_info, 7, 5, "range : %d", state->rule->range);
-        mvwprintw(win_info, 8, 5, "number of states : %d", state->rule->n_states);
-        mvwprintw(win_info, 9, 5, "middle included : %s", state->rule->middle_included ? "true" : "false");
-        mvwprintw(win_info, 10, 5, "survive : %d to %d", state->rule->s_min, state->rule->s_max);
-        mvwprintw(win_info, 11, 5, "born : %d to %d", state->rule->b_min, state->rule->b_max);
-        mvwprintw(win_info, 12, 5, "neighborhood_type : %s", state->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
+        mvwprintw(win_info, 6, 2, "population : %d", state->population);
+        mvwprintw(win_info, 7, 2, "rule string : %s", state->rule_str);
+        mvwprintw(win_info, 8, 5, "range : %d", state->rule->range);
+        mvwprintw(win_info, 9, 5, "number of states : %d", state->rule->n_states);
+        mvwprintw(win_info, 10, 5, "middle included : %s", state->rule->middle_included ? "true" : "false");
+        mvwprintw(win_info, 11, 5, "survive : %d to %d", state->rule->s_min, state->rule->s_max);
+        mvwprintw(win_info, 12, 5, "born : %d to %d", state->rule->b_min, state->rule->b_max);
+        mvwprintw(win_info, 13, 5, "neighborhood_type : %s", state->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
         neighbor_print(win_info, state, 13, 2);
         wrefresh(win_info);
     }
@@ -460,8 +472,8 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    state_t *state = create_state(50);
-    state_set_random(state, 0.983);
+    state_t *state = create_state(100, "R1,C0,M0,S4..5,B4..4,NM");
+    state_set_random(state, 0);
 
 
     mainLoop(win_terrain, state);
