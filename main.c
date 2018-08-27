@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #include <ncurses.h>
 #include <panel.h>
@@ -68,6 +69,7 @@ typedef struct state_t {
 /* Prototypes */
 
 int state_getyx(state_t *state, int y, int x) ;
+void state_setyx(state_t *state, int y, int x, int value) ;
 
 /* Globals */
 
@@ -102,6 +104,7 @@ void init() {
 
     /* other init functions */
     init_colors();
+    srand(time(NULL));
 }
 
 /* Neighborhood-related functions */
@@ -111,7 +114,7 @@ int dist_manhattan(int x1, int y1, int x2, int y2) {
 }
 
 int **neighbor_create(rule_t *rule) {
-    int size = (rule->range * 2) + 1;
+    int size = 2 * rule->range + 1;
     int **neighborhood = malloc(size * sizeof(int *));
 
     for (int i = 0; i < size; ++i) {
@@ -170,10 +173,10 @@ void neighbor_print(WINDOW *win, state_t* state, int sy, int sx) {
     getmaxyx(win, height, width);
     wmove(win, sy, sx);
 
-    for (int i = 0; i < min(height - 4, state->rule->range * 2 + 1); ++i) {
+    for (int i = 0; i < min(height - 4, 2 * state->rule->range + 1); ++i) {
         mvwhline(win, sy + i, 1, ' ', width - 2);
 
-        for (int j = 0; j < min(width - 2, state->rule->range * 2 + 1); ++j) {
+        for (int j = 0; j < min(width - 2, 2 * state->rule->range + 1); ++j) {
             mvwprintw(win, sy + i, sx + j,  "%d", state->neighborhood[i][j]);
         }
     }
@@ -191,7 +194,30 @@ rule_t *rule_create(char *rule_str) {
 
 
 void rule_apply(state_t *state) {
+    int** terrain = state->terrain;
+    for(int i = -state->radius; i <= state->radius; ++i) {
+        for(int j = -state->radius; j <= state->radius; ++j) {
+            int nc = neighbor_count(state, i, j);
+            int st = state_getyx(state, i, j);
 
+            /* survive case */
+            if (st) {
+                if (nc >= state->rule->s_min && nc <= state->rule->s_max) {
+                    continue;
+                } else {
+                    state_setyx(state, i, j, (st + 1) % state->rule->n_states);
+                }
+            } 
+            /* dead case */
+            else {
+                if (nc >= state->rule->b_min && nc <= state->rule->b_max) {
+                    /* get born */
+                    state_setyx(state, i, j, 1);
+                }
+            }
+        }
+    }
+    state->generation++;
 }
 
 /* State-related functions */
@@ -222,7 +248,7 @@ void state_print(WINDOW *win, state_t *state, int cy, int cx) {
         for (int j = 0; j < width - 2; ++j) {
             int value = state_getyx(state, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
             mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
-            mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 7 : 0, NULL);
+            mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 5 : 0, NULL);
         }
     }
 
@@ -245,9 +271,18 @@ void state_set_frontier(state_t *state, int fr) {
     }
 }
 
+void state_set_random(state_t* state, double prob) {
+    for (int i = -state->radius; i <= state->radius; i++) {
+        for (int j = -state->radius; j <= state->radius; j++) {
+            double rd = (double) rand() / RAND_MAX;
+            if (rd > prob) state_setyx(state, i, j, (rand() % state->rule->n_states) + 1);
+        }
+    }
+}
+
 
 int **create_terrain(int radius) {
-    int size = radius * 2 + 1;
+    int size = 2 * radius + 1;
     int **terrain = malloc(size * sizeof(int *));
 
     for (int i = 0; i < size; ++i) {
@@ -270,7 +305,7 @@ state_t *create_state(int radius) {
 }
 
 void free_state(state_t *state) {
-    int size = state->radius * 2 + 1;
+    int size = 2 * state->radius + 1;
 
     for (int i = 0; i < size; ++i) {
         free(state->terrain[i]);
@@ -289,8 +324,8 @@ void free_state(state_t *state) {
 
 void increase_size(state_t *state, int size) {
     int new_radius = state->radius + size;
-    int new_side_len = new_radius * 2 + 1;
-    int old_side_len = state->radius * 2 + 1;
+    int new_side_len = 2 * new_radius + 1;
+    int old_side_len = 2 * state->radius + 1;
     int **new_terrain = create_terrain(new_radius);
 
     for (int i = size; i < new_side_len - size; i++) {
@@ -425,11 +460,9 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    state_t *state = create_state(25);
+    state_t *state = create_state(50);
+    state_set_random(state, 0.983);
 
-    for (int i = 0; i <= 25; i++) {
-        state_set_frontier(state, i);
-    }
 
     mainLoop(win_terrain, state);
     endwin();
