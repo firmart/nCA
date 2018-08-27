@@ -16,19 +16,40 @@
 #include <ncurses.h>
 #include <panel.h>
 
+/* Definitions */
 
 #ifndef CTRL
 #define CTRL(c) ((c) & 037)
 #endif
 
+/* Structures */
+
+
+typedef struct rule_t {
+    int range;
+    int n_states;
+    int middle_included;
+    int s_min;
+    int s_max;
+    int b_min;
+    int b_max;
+    char neighborhood_type;
+} rule_t;
 
 typedef struct state_t {
     int terrain_mode; /* 0 = continuous mode, 1 = wall mode, 2 = unlimited */
     int **terrain;
     int radius;
+    int generation;
+    char* rule_str;
+    rule_t* rule;
 } state_t;
 
+/* Globals */
+
 WINDOW *win_info;
+
+/* Init functions */
 
 void init_colors() {
 
@@ -59,10 +80,15 @@ void init() {
     init_colors();
 }
 
+/* Rule-related functions */
 
-void insertMode() {
-
+rule_t* rule_create(char* rule_str) {
+    rule_t* rule = malloc(sizeof(rule_t));
+    sscanf(rule_str, "R%d,C%d,M%d,S%d..%d,B%d..%d,N%c", &rule->range, &rule->n_states, &rule->middle_included, &rule->s_min, &rule->s_max, &rule->b_min, &rule->b_max, &rule->neighborhood_type);
+    return rule;
 }
+
+/* State-related functions */
 
 int state_getyx(state_t *state, int y, int x) {
     int r = state->radius;
@@ -75,16 +101,6 @@ int state_getyx(state_t *state, int y, int x) {
     }
 }
 
-void set_cell_attr(WINDOW *win, int value) {
-    if (value > 0) {
-        wattrset(win, COLOR_PAIR(7));
-
-    } else {
-        wstandend(win);
-    }
-}
-
-
 void print_state(WINDOW *win, state_t *state, int cy, int cx) {
 
     int sy = 3, sx = 1, height = 0, width = 0;
@@ -95,62 +111,12 @@ void print_state(WINDOW *win, state_t *state, int cy, int cx) {
         mvwhline(win, sy + i, 1, ' ', width - 2);
         for (int j = 0; j < width - 2; ++j) {
             int value = state_getyx(state, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
-            //set_cell_attr(win, value);
             mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
             mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 7 : 0, NULL);
-            //mvwprintw(win, sy + i, sx + j,  " ");
         }
     }
 
 }
-
-void mainLoop(WINDOW *win_terrain, state_t *state) {
-    int c, cx = 0, cy = 0;
-
-    print_state(win_terrain, state, cy, cx);
-    wrefresh(win_terrain);
-
-    while ((c = getch()) != CTRL('q')) {
-
-        //mvhline(2, 1, ACS_HLINE, width - 2);
-        switch (c) {
-            case 'i':
-                insertMode();
-                break;
-
-            case KEY_DOWN:
-                print_state(win_terrain, state, ++cy, cx);
-                wrefresh(win_terrain);
-                break;
-
-            case KEY_UP:
-                print_state(win_terrain, state, --cy, cx);
-                wrefresh(win_terrain);
-                break;
-
-            case KEY_LEFT:
-                print_state(win_terrain, state, cy, ++cx);
-                wrefresh(win_terrain);
-                break;
-
-            case KEY_RIGHT:
-                print_state(win_terrain, state, cy, --cx);
-                wrefresh(win_terrain);
-                break;
-
-            default:
-                break;
-        }
-
-        int info_width, info_height;
-        getmaxyx(win_info, info_height, info_width);
-        mvwhline(win_info, 3, 1, ' ', info_width - 2);
-        mvwprintw(win_info, 3, 2, "cursor : (%d, %d)", cx, cy);
-        wrefresh(win_info);
-    }
-}
-
-
 
 void state_setyx(state_t *state, int y, int x, int value) {
     int r = state->radius;
@@ -183,7 +149,10 @@ int **create_terrain(int radius) {
 
 state_t *create_state(int radius) {
     state_t *state = malloc(sizeof(state_t));
+    state->rule_str = strdup("R1,C0,M0,S2..3,B3..3,NM"); /* temporarily just support Conway's game of life */
+    state->rule = rule_create(state->rule_str);
     state->radius = radius;
+    state->generation = 0;
     state->terrain = create_terrain(radius);
     return state;
 }
@@ -215,6 +184,64 @@ void increase_size(state_t *state, int size) {
     state->radius = new_radius;
     state->terrain = new_terrain;
 }
+
+void mainLoop(WINDOW *win_terrain, state_t *state) {
+    int c, cx = 0, cy = 0;
+
+    print_state(win_terrain, state, cy, cx);
+    wrefresh(win_terrain);
+
+    while ((c = getch()) != CTRL('q')) {
+
+        switch (c) {
+
+            case 'n' :
+                //apply_rule(state); 
+                break;
+            case KEY_DOWN:
+                print_state(win_terrain, state, ++cy, cx);
+                wrefresh(win_terrain);
+                break;
+
+            case KEY_UP:
+                print_state(win_terrain, state, --cy, cx);
+                wrefresh(win_terrain);
+                break;
+
+            case KEY_LEFT:
+                print_state(win_terrain, state, cy, ++cx);
+                wrefresh(win_terrain);
+                break;
+
+            case KEY_RIGHT:
+                print_state(win_terrain, state, cy, --cx);
+                wrefresh(win_terrain);
+                break;
+
+            default:
+                break;
+        }
+
+        int info_width, info_height;
+        getmaxyx(win_info, info_height, info_width);
+        for (int i = 3; i <= 11; ++i) {
+            mvwhline(win_info, i, 1, ' ', info_width - 2);
+        }
+        mvwprintw(win_info, 3, 2, "cursor : (%d, %d)", cx, cy);
+        mvwprintw(win_info, 4, 2, "generation : %d", state->generation);
+        mvwprintw(win_info, 5, 2, "rule string : %s", state->rule_str);
+        mvwprintw(win_info, 6, 5, "range : %d", state->rule->range);
+        mvwprintw(win_info, 7, 5, "number of states : %d", state->rule->n_states);
+        mvwprintw(win_info, 8, 5, "middle included : %s", state->rule->middle_included ? "true" : "false");
+        mvwprintw(win_info, 9, 5, "survive : %d to %d", state->rule->s_min, state->rule->s_max);
+        mvwprintw(win_info, 10, 5, "born : %d to %d", state->rule->b_min, state->rule->b_max);
+        mvwprintw(win_info, 11, 5, "neighborhood_type : %s", state->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
+        wrefresh(win_info);
+    }
+}
+
+
+/* Utils functions */
 
 void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string, chtype color) {
     int length, x, y;
@@ -263,8 +290,8 @@ void win_show(WINDOW *win, char *label, int label_color) {
 
 
 int main(int argc, char *argv[]) {
-    init();
 
+    init();
 
     WINDOW *win_terrain = newwin(LINES - 1, LINES * 2, 0, 2);
     win_show(win_terrain, "Terrain navigation", 1);
