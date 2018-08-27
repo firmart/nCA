@@ -22,11 +22,23 @@
 #define CTRL(c) ((c) & 037)
 #endif
 
+
+#define max(a,b) \
+  ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+    _a > _b ? _a : _b; })
+
+#define min(a,b) \
+  ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+    _a < _b ? _a : _b; })
+
 typedef enum tm_t {
     T_CONTINUOUS,
     T_WALL,
     T_UNLIMITED
 } tm_t;
+
 
 /* Structures */
 
@@ -48,10 +60,14 @@ typedef struct state_t {
     int **terrain;
     int radius;
     int generation;
-    char* rule_str;
-    rule_t* rule;
-    int** neighborhood;
+    char *rule_str;
+    rule_t *rule;
+    int **neighborhood;
 } state_t;
+
+/* Prototypes */
+
+int state_getyx(state_t *state, int y, int x) ;
 
 /* Globals */
 
@@ -94,9 +110,9 @@ int dist_manhattan(int x1, int y1, int x2, int y2) {
     return abs(y1 - y2) + abs(x1 - x2);
 }
 
-int** neighbor_create(rule_t* rule) {
+int **neighbor_create(rule_t *rule) {
     int size = (rule->range * 2) + 1;
-    int** neighborhood = malloc(size * sizeof(int*));
+    int **neighborhood = malloc(size * sizeof(int *));
 
     for (int i = 0; i < size; ++i) {
         neighborhood[i] = calloc(size, sizeof(int));
@@ -106,49 +122,76 @@ int** neighbor_create(rule_t* rule) {
         for (int j = 0; j < size; ++j) {
 
             if (i == rule->range && j == rule->range) {
-                if (rule->middle_included)
+                if (rule->middle_included) {
                     neighborhood[i][j] = 1;
-                else 
+
+                } else {
                     continue;
+                }
             }
 
             if (rule->neighborhood_type == 'N' && dist_manhattan(i, j, rule->range, rule->range) <= rule->range) {
                 neighborhood[i][j] = 1;
+
             } else if (rule->neighborhood_type == 'M') {
                 neighborhood[i][j] = 1;
             }
         }
     }
+
     return neighborhood;
 }
 
-/* TODO - Only support wall mode for the momment. 
+/* TODO - Only support wall mode for the momment.
  *        Implement
  *          - unlimited mode
  *          - continuous mode
  */
 
-int neighbor_count(state_t* state, int x, int y) {
-    int counter = 0, i, j, k;
-    int** neighbor = state->neighborhood;
+int neighbor_count(state_t *state, int y, int x) {
+    int counter = 0;
+    int **neighbor = state->neighborhood;
+
     if (state->terrain_mode == T_WALL) {
-        /* TODO */ 
+        for (int k = -state->rule->range; k <= state->rule->range; ++k) {
+            for (int l = -state->rule->range; l <= state->rule->range; ++l) {
+                counter += state_getyx(state, y + k, x + l) * state->neighborhood[k + state->rule->range][l + state->rule->range];
+            }
+        }
     }
 
     return counter;
 }
 
+
+void neighbor_print(WINDOW *win, state_t* state, int sy, int sx) {
+
+    int height = 0, width = 0;
+    getmaxyx(win, height, width);
+    wmove(win, sy, sx);
+
+    for (int i = 0; i < min(height - 4, state->rule->range * 2 + 1); ++i) {
+        mvwhline(win, sy + i, 1, ' ', width - 2);
+
+        for (int j = 0; j < min(width - 2, state->rule->range * 2 + 1); ++j) {
+            mvwprintw(win, sy + i, sx + j,  "%d", state->neighborhood[i][j]);
+        }
+    }
+
+}
+
 /* Rule-related functions */
 
-rule_t* rule_create(char* rule_str) {
-    rule_t* rule = malloc(sizeof(rule_t));
+rule_t *rule_create(char *rule_str) {
+    rule_t *rule = malloc(sizeof(rule_t));
     sscanf(rule_str, "R%d,C%d,M%d,S%d..%d,B%d..%d,N%c", &rule->range, &rule->n_states, &rule->middle_included, &rule->s_min, &rule->s_max, &rule->b_min, &rule->b_max, &rule->neighborhood_type);
+    if (rule->n_states < 2) rule->n_states = 2;
     return rule;
 }
 
 
-void rule_apply(state_t* state) {
-    
+void rule_apply(state_t *state) {
+
 }
 
 /* State-related functions */
@@ -156,18 +199,18 @@ void rule_apply(state_t* state) {
 int state_getyx(state_t *state, int y, int x) {
     int r = state->radius;
 
-    if (abs(x) < r && abs(y) < r) {
-        return state->terrain[r + y - 1][r + x - 1];
+    if (abs(x) <= r && abs(y) <= r) {
+        return state->terrain[r + y][r + x];
 
     } else {
         return 0;
     }
 }
 
-/* TODO: - consider terrain mode 
+/* TODO: - consider terrain mode
  *          - continuous/wall mode : draw limit
  * */
-void print_state(WINDOW *win, state_t *state, int cy, int cx) {
+void state_print(WINDOW *win, state_t *state, int cy, int cx) {
 
     int sy = 3, sx = 1, height = 0, width = 0;
     getmaxyx(win, height, width);
@@ -175,6 +218,7 @@ void print_state(WINDOW *win, state_t *state, int cy, int cx) {
 
     for (int i = 0; i < height - 4; ++i) {
         mvwhline(win, sy + i, 1, ' ', width - 2);
+
         for (int j = 0; j < width - 2; ++j) {
             int value = state_getyx(state, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
             mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
@@ -187,8 +231,8 @@ void print_state(WINDOW *win, state_t *state, int cy, int cx) {
 void state_setyx(state_t *state, int y, int x, int value) {
     int r = state->radius;
 
-    if (abs(x) < r && abs(y) < r) {
-        state->terrain[r + y - 1][r + x - 1] = value;
+    if (abs(x) <= r && abs(y) <= r) {
+        state->terrain[r + y][r + x] = value;
     }
 }
 
@@ -203,7 +247,7 @@ void state_set_frontier(state_t *state, int fr) {
 
 
 int **create_terrain(int radius) {
-    int size = radius * 2 - 1;
+    int size = radius * 2 + 1;
     int **terrain = malloc(size * sizeof(int *));
 
     for (int i = 0; i < size; ++i) {
@@ -226,7 +270,7 @@ state_t *create_state(int radius) {
 }
 
 void free_state(state_t *state) {
-    int size = state->radius * 2 - 1;
+    int size = state->radius * 2 + 1;
 
     for (int i = 0; i < size; ++i) {
         free(state->terrain[i]);
@@ -245,8 +289,8 @@ void free_state(state_t *state) {
 
 void increase_size(state_t *state, int size) {
     int new_radius = state->radius + size;
-    int new_side_len = new_radius * 2 - 1;
-    int old_side_len = state->radius * 2 - 1;
+    int new_side_len = new_radius * 2 + 1;
+    int old_side_len = state->radius * 2 + 1;
     int **new_terrain = create_terrain(new_radius);
 
     for (int i = size; i < new_side_len - size; i++) {
@@ -263,7 +307,7 @@ void increase_size(state_t *state, int size) {
 void mainLoop(WINDOW *win_terrain, state_t *state) {
     int c, cx = 0, cy = 0;
 
-    print_state(win_terrain, state, cy, cx);
+    state_print(win_terrain, state, cy, cx);
     wrefresh(win_terrain);
 
     while ((c = getch()) != CTRL('q')) {
@@ -271,27 +315,28 @@ void mainLoop(WINDOW *win_terrain, state_t *state) {
         switch (c) {
 
             case 'n' :
-                rule_apply(state); 
-                print_state(win_terrain, state, cy, cx);
+                rule_apply(state);
+                state_print(win_terrain, state, cy, cx);
                 wrefresh(win_terrain);
                 break;
+
             case KEY_DOWN:
-                print_state(win_terrain, state, ++cy, cx);
+                state_print(win_terrain, state, ++cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_UP:
-                print_state(win_terrain, state, --cy, cx);
+                state_print(win_terrain, state, --cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_LEFT:
-                print_state(win_terrain, state, cy, ++cx);
+                state_print(win_terrain, state, cy, ++cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_RIGHT:
-                print_state(win_terrain, state, cy, --cx);
+                state_print(win_terrain, state, cy, --cx);
                 wrefresh(win_terrain);
                 break;
 
@@ -301,18 +346,22 @@ void mainLoop(WINDOW *win_terrain, state_t *state) {
 
         int info_width, info_height;
         getmaxyx(win_info, info_height, info_width);
+
         for (int i = 3; i <= 11; ++i) {
             mvwhline(win_info, i, 1, ' ', info_width - 2);
         }
+
         mvwprintw(win_info, 3, 2, "cursor : (%d, %d)", cx, cy);
-        mvwprintw(win_info, 4, 2, "generation : %d", state->generation);
-        mvwprintw(win_info, 5, 2, "rule string : %s", state->rule_str);
-        mvwprintw(win_info, 6, 5, "range : %d", state->rule->range);
-        mvwprintw(win_info, 7, 5, "number of states : %d", state->rule->n_states);
-        mvwprintw(win_info, 8, 5, "middle included : %s", state->rule->middle_included ? "true" : "false");
-        mvwprintw(win_info, 9, 5, "survive : %d to %d", state->rule->s_min, state->rule->s_max);
-        mvwprintw(win_info, 10, 5, "born : %d to %d", state->rule->b_min, state->rule->b_max);
-        mvwprintw(win_info, 11, 5, "neighborhood_type : %s", state->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
+        mvwprintw(win_info, 4, 2, "neighbor count : %d", neighbor_count(state, cy, cx));
+        mvwprintw(win_info, 5, 2, "generation : %d", state->generation);
+        mvwprintw(win_info, 6, 2, "rule string : %s", state->rule_str);
+        mvwprintw(win_info, 7, 5, "range : %d", state->rule->range);
+        mvwprintw(win_info, 8, 5, "number of states : %d", state->rule->n_states);
+        mvwprintw(win_info, 9, 5, "middle included : %s", state->rule->middle_included ? "true" : "false");
+        mvwprintw(win_info, 10, 5, "survive : %d to %d", state->rule->s_min, state->rule->s_max);
+        mvwprintw(win_info, 11, 5, "born : %d to %d", state->rule->b_min, state->rule->b_max);
+        mvwprintw(win_info, 12, 5, "neighborhood_type : %s", state->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
+        neighbor_print(win_info, state, 13, 2);
         wrefresh(win_info);
     }
 }
@@ -373,12 +422,12 @@ int main(int argc, char *argv[]) {
     WINDOW *win_terrain = newwin(LINES - 1, LINES * 2, 0, 2);
     win_show(win_terrain, "Terrain navigation", 1);
 
-    win_info = newwin(LINES/2, COLS/2, 0, LINES * 2 + 5);
+    win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
     state_t *state = create_state(25);
 
-    for (int i = 0; i < 25; i++) {
+    for (int i = 0; i <= 25; i++) {
         state_set_frontier(state, i);
     }
 
