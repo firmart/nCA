@@ -253,7 +253,7 @@ void state_print(WINDOW *win, state_t *state, int cy, int cx) {
 
         for (int j = 0; j < width - 2; ++j) {
             int value = state_getyx(state, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
-     //       mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
+            mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
             mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 5 : 0, NULL);
         }
     }
@@ -270,12 +270,22 @@ void state_setyx(state_t *state, int y, int x, int value) {
 
 void state_set_frontier(state_t *state, int fr) {
     for (int i = -fr; i <= fr; i++) {
-        state_setyx(state, i, -fr, fr);
-        state_setyx(state, i, fr, fr);
-        state_setyx(state, fr, i, fr);
-        state_setyx(state, -fr, i, fr);
+        state_setyx(state, i, -fr, 1);
+        state_setyx(state, i, fr, 1);
+        state_setyx(state, fr, i, 1);
+        state_setyx(state, -fr, i, 1);
     }
     state->population = fr * 8 ;
+}
+
+void state_set_ball(state_t *state, int y, int x, int r) {
+    for (int i = x - r; i <= x + r; ++i) {
+        for (int j = y - r; j <= y + r; ++j) {
+            if (dist_manhattan(x, y, i, j) <= r) {
+                state_setyx(state, j, i, 1);
+            }
+        }
+    }
 }
 
 void state_set_random(state_t* state, double prob) {
@@ -367,21 +377,25 @@ void mainLoop(WINDOW *win_terrain, state_t *state) {
                 break;
 
             case KEY_DOWN:
+            case 'j':
                 state_print(win_terrain, state, ++cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_UP:
+            case 'k':
                 state_print(win_terrain, state, --cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_LEFT:
+            case 'h':
                 state_print(win_terrain, state, cy, ++cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_RIGHT:
+            case 'l':
                 state_print(win_terrain, state, cy, --cx);
                 wrefresh(win_terrain);
                 break;
@@ -472,9 +486,10 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    state_t *state = create_state(100, "R1,C0,M0,S4..5,B4..4,NM");
-    state_set_random(state, 0);
+    state_t *state = create_state(1000, "R1,C0,M0,S3..8,B3..8,NM");
+    //state_set_random(state, 0.95);
 
+    state_set_ball(state, 0, 0, 5);
 
     mainLoop(win_terrain, state);
     endwin();
