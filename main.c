@@ -45,6 +45,7 @@ typedef enum tm_t {
 /* Structures */
 
 /* firstly implement LTL rules */
+// http://golly.sourceforge.net/Help/Algorithms/Larger_than_Life.html
 
 typedef struct rule_t {
     int range;
@@ -72,6 +73,8 @@ typedef struct state_t {
 
 int state_getyx(state_t *state, int y, int x) ;
 void state_setyx(state_t *state, int y, int x, int value) ;
+int **create_terrain(int radius) ;
+void free_terrain(int** terrain, int radius) ;
 
 /* Globals */
 
@@ -196,7 +199,20 @@ rule_t *rule_create(char *rule_str) {
 
 
 void rule_apply(state_t *state) {
-    int** terrain = state->terrain;
+    int size = 2 * state->radius + 1;
+
+    /* create temporary state and terrain */
+    state_t* tmp_state = malloc(sizeof(state_t));
+    memcpy(tmp_state, state, sizeof(state_t));
+
+    tmp_state->terrain = create_terrain(state->radius);
+
+    /* copy terrain */
+    for (int i = 0; i < size; i++) {
+        memcpy(tmp_state->terrain[i], state->terrain[i], size * sizeof(int));
+    }
+
+    /* compute next generation */
     for(int i = -state->radius; i <= state->radius; ++i) {
         for(int j = -state->radius; j <= state->radius; ++j) {
             int nc = neighbor_count(state, i, j);
@@ -208,7 +224,7 @@ void rule_apply(state_t *state) {
                     continue;
                 } else {
                     int new_st = (st + 1) % state->rule->n_states;
-                    state_setyx(state, i, j, new_st);
+                    state_setyx(tmp_state, i, j, new_st);
                     if (new_st == 0) state->population--;
 
                 }
@@ -217,27 +233,20 @@ void rule_apply(state_t *state) {
             else {
                 if (nc >= state->rule->b_min && nc <= state->rule->b_max) {
                     /* get born */
-                    state_setyx(state, i, j, 1);
+                    state_setyx(tmp_state, i, j, 1);
                     state->population++;
                 }
             }
         }
     }
+
+    free_terrain(state->terrain, state->radius);
+    state->terrain = tmp_state->terrain;
     state->generation++;
 }
 
 /* State-related functions */
 
-int state_getyx(state_t *state, int y, int x) {
-    int r = state->radius;
-
-    if (abs(x) <= r && abs(y) <= r) {
-        return state->terrain[r + y][r + x];
-
-    } else {
-        return 0;
-    }
-}
 
 /* TODO: - consider terrain mode
  *          - continuous/wall mode : draw limit
@@ -258,6 +267,17 @@ void state_print(WINDOW *win, state_t *state, int cy, int cx) {
         }
     }
 
+}
+
+int state_getyx(state_t *state, int y, int x) {
+    int r = state->radius;
+
+    if (abs(x) <= r && abs(y) <= r) {
+        return state->terrain[r + y][r + x];
+
+    } else {
+        return 0;
+    }
 }
 
 void state_setyx(state_t *state, int y, int x, int value) {
@@ -283,6 +303,7 @@ void state_set_ball(state_t *state, int y, int x, int r) {
         for (int j = y - r; j <= y + r; ++j) {
             if (dist_manhattan(x, y, i, j) <= r) {
                 state_setyx(state, j, i, 1);
+                state->population++;
             }
         }
     }
@@ -325,17 +346,22 @@ state_t *create_state(int radius, char* rulestring) {
     return state;
 }
 
-void free_state(state_t *state) {
-    int size = 2 * state->radius + 1;
-
+void free_terrain(int** terrain, int radius) {
+    int size = 2 * radius + 1;
     for (int i = 0; i < size; ++i) {
-        free(state->terrain[i]);
+        free(terrain[i]);
     }
+    
+}
+
+void free_state(state_t *state) {
+
 
     //for (int i = 0; i < size; ++i) {
     //    free(state->neighborhood[i]);
     //}
 
+    free_terrain(state->terrain, state->radius);
     free(state->terrain);
     free(state->rule_str);
     free(state->rule);
@@ -486,10 +512,10 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    state_t *state = create_state(1000, "R1,C0,M0,S3..8,B3..8,NM");
+    state_t *state = create_state(1000, "R1,C2,M1,S3..8,B3..8,NM");
     //state_set_random(state, 0.95);
 
-    state_set_ball(state, 0, 0, 5);
+    state_set_ball(state, 0, 0, 10);
 
     mainLoop(win_terrain, state);
     endwin();
