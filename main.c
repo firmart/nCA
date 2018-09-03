@@ -58,7 +58,7 @@ typedef struct rule_t {
     char neighborhood_type;
 } rule_t;
 
-typedef struct state_t {
+typedef struct config_t {
     tm_t terrain_mode; /* 0 = continuous mode, 1 = wall mode, 2 = unlimited */
     int **terrain;
     int radius;
@@ -67,12 +67,12 @@ typedef struct state_t {
     char *rule_str;
     rule_t *rule;
     int **neighborhood;
-} state_t;
+} config_t;
 
 /* Prototypes */
 
-int state_getyx(state_t *state, int y, int x) ;
-void state_setyx(state_t *state, int y, int x, int value) ;
+int config_getyx(config_t *config, int y, int x) ;
+void config_setyx(config_t *config, int y, int x, int value) ;
 int **create_terrain(int radius) ;
 void free_terrain(int** terrain, int radius) ;
 
@@ -102,7 +102,8 @@ void init() {
     start_color();         /* use colors                          */
     use_default_colors();  /* use terminal default colors when we
                               initialize color in pair with -1    */
-    raw();                 /* raw mode                            */
+    cbreak();              
+    //raw();                 /* raw mode                            */
     noecho();              /* do not echo user input              */
     keypad(stdscr, TRUE);  /* enable functional keys              */
     curs_set(0);           /* invisible cursor                    */
@@ -156,14 +157,14 @@ int **neighbor_create(rule_t *rule) {
  *          - continuous mode
  */
 
-int neighbor_count(state_t *state, int y, int x) {
+int neighbor_count(config_t *config, int y, int x) {
     int counter = 0;
-    int **neighbor = state->neighborhood;
+    int **neighbor = config->neighborhood;
 
-    if (state->terrain_mode == T_WALL) {
-        for (int k = -state->rule->range; k <= state->rule->range; ++k) {
-            for (int l = -state->rule->range; l <= state->rule->range; ++l) {
-                counter += state_getyx(state, y + k, x + l) * state->neighborhood[k + state->rule->range][l + state->rule->range];
+    if (config->terrain_mode == T_WALL) {
+        for (int k = -config->rule->range; k <= config->rule->range; ++k) {
+            for (int l = -config->rule->range; l <= config->rule->range; ++l) {
+                counter += config_getyx(config, y + k, x + l) * config->neighborhood[k + config->rule->range][l + config->rule->range];
             }
         }
     }
@@ -172,17 +173,17 @@ int neighbor_count(state_t *state, int y, int x) {
 }
 
 
-void neighbor_print(WINDOW *win, state_t* state, int sy, int sx) {
+void neighbor_print(WINDOW *win, config_t* config, int sy, int sx) {
 
     int height = 0, width = 0;
     getmaxyx(win, height, width);
     wmove(win, sy, sx);
 
-    for (int i = 0; i < min(height - 4, 2 * state->rule->range + 1); ++i) {
+    for (int i = 0; i < min(height - 4, 2 * config->rule->range + 1); ++i) {
         mvwhline(win, sy + i, 1, ' ', width - 2);
 
-        for (int j = 0; j < min(width - 2, 2 * state->rule->range + 1); ++j) {
-            mvwprintw(win, sy + i, sx + j,  "%d", state->neighborhood[i][j]);
+        for (int j = 0; j < min(width - 2, 2 * config->rule->range + 1); ++j) {
+            mvwprintw(win, sy + i, sx + j,  "%d", config->neighborhood[i][j]);
         }
     }
 
@@ -198,51 +199,51 @@ rule_t *rule_create(char *rule_str) {
 }
 
 
-void rule_apply(state_t *state) {
-    int size = 2 * state->radius + 1;
+void rule_apply(config_t *config) {
+    int size = 2 * config->radius + 1;
 
-    /* create temporary state and terrain */
-    state_t* tmp_state = malloc(sizeof(state_t));
-    memcpy(tmp_state, state, sizeof(state_t));
+    /* create temporary config and terrain */
+    config_t* tmp_config = malloc(sizeof(config_t));
+    memcpy(tmp_config, config, sizeof(config_t));
 
-    tmp_state->terrain = create_terrain(state->radius);
+    tmp_config->terrain = create_terrain(config->radius);
 
     /* copy terrain */
     for (int i = 0; i < size; i++) {
-        memcpy(tmp_state->terrain[i], state->terrain[i], size * sizeof(int));
+        memcpy(tmp_config->terrain[i], config->terrain[i], size * sizeof(int));
     }
 
     /* compute next generation */
-    for(int i = -state->radius; i <= state->radius; ++i) {
-        for(int j = -state->radius; j <= state->radius; ++j) {
-            int nc = neighbor_count(state, i, j);
-            int st = state_getyx(state, i, j);
+    for(int i = -config->radius; i <= config->radius; ++i) {
+        for(int j = -config->radius; j <= config->radius; ++j) {
+            int nc = neighbor_count(config, i, j);
+            int st = config_getyx(config, i, j);
 
             /* survive case */
             if (st) {
-                if (nc >= state->rule->s_min && nc <= state->rule->s_max) {
+                if (nc >= config->rule->s_min && nc <= config->rule->s_max) {
                     continue;
                 } else {
-                    int new_st = (st + 1) % state->rule->n_states;
-                    state_setyx(tmp_state, i, j, new_st);
-                    if (new_st == 0) state->population--;
+                    int new_st = (st + 1) % config->rule->n_states;
+                    config_setyx(tmp_config, i, j, new_st);
+                    if (new_st == 0) config->population--;
 
                 }
             } 
             /* dead case */
             else {
-                if (nc >= state->rule->b_min && nc <= state->rule->b_max) {
+                if (nc >= config->rule->b_min && nc <= config->rule->b_max) {
                     /* get born */
-                    state_setyx(tmp_state, i, j, 1);
-                    state->population++;
+                    config_setyx(tmp_config, i, j, 1);
+                    config->population++;
                 }
             }
         }
     }
 
-    free_terrain(state->terrain, state->radius);
-    state->terrain = tmp_state->terrain;
-    state->generation++;
+    free_terrain(config->terrain, config->radius);
+    config->terrain = tmp_config->terrain;
+    config->generation++;
 }
 
 /* State-related functions */
@@ -251,7 +252,7 @@ void rule_apply(state_t *state) {
 /* TODO: - consider terrain mode
  *          - continuous/wall mode : draw limit
  * */
-void state_print(WINDOW *win, state_t *state, int cy, int cx) {
+void config_print(WINDOW *win, config_t *config, int cy, int cx) {
 
     int sy = 3, sx = 1, height = 0, width = 0;
     getmaxyx(win, height, width);
@@ -261,7 +262,7 @@ void state_print(WINDOW *win, state_t *state, int cy, int cx) {
         mvwhline(win, sy + i, 1, ' ', width - 2);
 
         for (int j = 0; j < width - 2; ++j) {
-            int value = state_getyx(state, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
+            int value = config_getyx(config, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
             mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
             mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 5 : 0, NULL);
         }
@@ -269,53 +270,53 @@ void state_print(WINDOW *win, state_t *state, int cy, int cx) {
 
 }
 
-int state_getyx(state_t *state, int y, int x) {
-    int r = state->radius;
+int config_getyx(config_t *config, int y, int x) {
+    int r = config->radius;
 
     if (abs(x) <= r && abs(y) <= r) {
-        return state->terrain[r + y][r + x];
+        return config->terrain[r + y][r + x];
 
     } else {
         return 0;
     }
 }
 
-void state_setyx(state_t *state, int y, int x, int value) {
-    int r = state->radius;
+void config_setyx(config_t *config, int y, int x, int value) {
+    int r = config->radius;
 
     if (abs(x) <= r && abs(y) <= r) {
-        state->terrain[r + y][r + x] = value;
+        config->terrain[r + y][r + x] = value;
     }
 }
 
-void state_set_frontier(state_t *state, int fr) {
+void config_set_frontier(config_t *config, int fr) {
     for (int i = -fr; i <= fr; i++) {
-        state_setyx(state, i, -fr, 1);
-        state_setyx(state, i, fr, 1);
-        state_setyx(state, fr, i, 1);
-        state_setyx(state, -fr, i, 1);
+        config_setyx(config, i, -fr, 1);
+        config_setyx(config, i, fr, 1);
+        config_setyx(config, fr, i, 1);
+        config_setyx(config, -fr, i, 1);
     }
-    state->population = fr * 8 ;
+    config->population = fr * 8 ;
 }
 
-void state_set_ball(state_t *state, int y, int x, int r) {
+void config_set_ball(config_t *config, int y, int x, int r) {
     for (int i = x - r; i <= x + r; ++i) {
         for (int j = y - r; j <= y + r; ++j) {
             if (dist_manhattan(x, y, i, j) <= r) {
-                state_setyx(state, j, i, 1);
-                state->population++;
+                config_setyx(config, j, i, 1);
+                config->population++;
             }
         }
     }
 }
 
-void state_set_random(state_t* state, double prob) {
-    for (int i = -state->radius; i <= state->radius; i++) {
-        for (int j = -state->radius; j <= state->radius; j++) {
+void config_set_random(config_t* config, double prob) {
+    for (int i = -config->radius; i <= config->radius; i++) {
+        for (int j = -config->radius; j <= config->radius; j++) {
             double rd = (double) rand() / RAND_MAX;
             if (rd > prob) { 
-                state_setyx(state, i, j, (rand() % (state->rule->n_states - 1)) + 1);
-                state->population++;
+                config_setyx(config, i, j, (rand() % (config->rule->n_states - 1)) + 1);
+                config->population++;
             }
         }
     }
@@ -333,17 +334,17 @@ int **create_terrain(int radius) {
     return terrain;
 }
 
-state_t *create_state(int radius, char* rulestring) {
-    state_t *state = malloc(sizeof(state_t));
-    state->terrain_mode = 1; /* temporarily just support wall mode */
-    state->rule_str = strdup(rulestring); /* temporarily just support Conway's game of life */
-    state->rule = rule_create(state->rule_str);
-    state->neighborhood = neighbor_create(state->rule);
-    state->radius = radius;
-    state->generation = 0;
-    state->population = 0;
-    state->terrain = create_terrain(radius);
-    return state;
+config_t *create_config(int radius, char* rulestring) {
+    config_t *config = malloc(sizeof(config_t));
+    config->terrain_mode = 1; /* temporarily just support wall mode */
+    config->rule_str = strdup(rulestring); /* temporarily just support Conway's game of life */
+    config->rule = rule_create(config->rule_str);
+    config->neighborhood = neighbor_create(config->rule);
+    config->radius = radius;
+    config->generation = 0;
+    config->population = 0;
+    config->terrain = create_terrain(radius);
+    return config;
 }
 
 void free_terrain(int** terrain, int radius) {
@@ -354,75 +355,75 @@ void free_terrain(int** terrain, int radius) {
     
 }
 
-void free_state(state_t *state) {
+void free_config(config_t *config) {
 
 
     //for (int i = 0; i < size; ++i) {
-    //    free(state->neighborhood[i]);
+    //    free(config->neighborhood[i]);
     //}
 
-    free_terrain(state->terrain, state->radius);
-    free(state->terrain);
-    free(state->rule_str);
-    free(state->rule);
-    free(state);
+    free_terrain(config->terrain, config->radius);
+    free(config->terrain);
+    free(config->rule_str);
+    free(config->rule);
+    free(config);
 }
 
 
-void increase_size(state_t *state, int size) {
-    int new_radius = state->radius + size;
+void increase_size(config_t *config, int size) {
+    int new_radius = config->radius + size;
     int new_side_len = 2 * new_radius + 1;
-    int old_side_len = 2 * state->radius + 1;
+    int old_side_len = 2 * config->radius + 1;
     int **new_terrain = create_terrain(new_radius);
 
     for (int i = size; i < new_side_len - size; i++) {
-        memcpy(&new_terrain[i][size], state->terrain[i - size], old_side_len * sizeof(int));
+        memcpy(&new_terrain[i][size], config->terrain[i - size], old_side_len * sizeof(int));
     }
 
-    free(state->terrain);
+    free(config->terrain);
 
-    state->radius = new_radius;
-    state->terrain = new_terrain;
+    config->radius = new_radius;
+    config->terrain = new_terrain;
 }
 
 
-void mainLoop(WINDOW *win_terrain, state_t *state) {
+void mainLoop(WINDOW *win_terrain, config_t *config) {
     int c, cx = 0, cy = 0;
 
-    state_print(win_terrain, state, cy, cx);
+    config_print(win_terrain, config, cy, cx);
     wrefresh(win_terrain);
 
-    while ((c = getch()) != CTRL('q')) {
+    while ((c = getch()) != 'q') {
 
         switch (c) {
 
             case 'n' :
-                rule_apply(state);
-                state_print(win_terrain, state, cy, cx);
+                rule_apply(config);
+                config_print(win_terrain, config, cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_DOWN:
             case 'j':
-                state_print(win_terrain, state, ++cy, cx);
+                config_print(win_terrain, config, ++cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_UP:
             case 'k':
-                state_print(win_terrain, state, --cy, cx);
+                config_print(win_terrain, config, --cy, cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_LEFT:
             case 'h':
-                state_print(win_terrain, state, cy, ++cx);
+                config_print(win_terrain, config, cy, ++cx);
                 wrefresh(win_terrain);
                 break;
 
             case KEY_RIGHT:
             case 'l':
-                state_print(win_terrain, state, cy, --cx);
+                config_print(win_terrain, config, cy, --cx);
                 wrefresh(win_terrain);
                 break;
 
@@ -438,17 +439,17 @@ void mainLoop(WINDOW *win_terrain, state_t *state) {
         }
 
         mvwprintw(win_info, 3, 2, "cursor : (%d, %d)", cx, cy);
-        mvwprintw(win_info, 4, 2, "neighbor count : %d", neighbor_count(state, cy, cx));
-        mvwprintw(win_info, 5, 2, "generation : %d", state->generation);
-        mvwprintw(win_info, 6, 2, "population : %d", state->population);
-        mvwprintw(win_info, 7, 2, "rule string : %s", state->rule_str);
-        mvwprintw(win_info, 8, 5, "range : %d", state->rule->range);
-        mvwprintw(win_info, 9, 5, "number of states : %d", state->rule->n_states);
-        mvwprintw(win_info, 10, 5, "middle included : %s", state->rule->middle_included ? "true" : "false");
-        mvwprintw(win_info, 11, 5, "survive : %d to %d", state->rule->s_min, state->rule->s_max);
-        mvwprintw(win_info, 12, 5, "born : %d to %d", state->rule->b_min, state->rule->b_max);
-        mvwprintw(win_info, 13, 5, "neighborhood_type : %s", state->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
-        neighbor_print(win_info, state, 13, 2);
+        mvwprintw(win_info, 4, 2, "neighbor count : %d", neighbor_count(config, cy, cx));
+        mvwprintw(win_info, 5, 2, "generation : %d", config->generation);
+        mvwprintw(win_info, 6, 2, "population : %d", config->population);
+        mvwprintw(win_info, 7, 2, "rule string : %s", config->rule_str);
+        mvwprintw(win_info, 8, 5, "range : %d", config->rule->range);
+        mvwprintw(win_info, 9, 5, "number of states : %d", config->rule->n_states);
+        mvwprintw(win_info, 10, 5, "middle included : %s", config->rule->middle_included ? "true" : "false");
+        mvwprintw(win_info, 11, 5, "survive : %d to %d", config->rule->s_min, config->rule->s_max);
+        mvwprintw(win_info, 12, 5, "born : %d to %d", config->rule->b_min, config->rule->b_max);
+        mvwprintw(win_info, 13, 5, "neighborhood_type : %s", config->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
+        neighbor_print(win_info, config, 13, 2);
         wrefresh(win_info);
     }
 }
@@ -512,12 +513,12 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    state_t *state = create_state(1000, "R1,C2,M1,S3..8,B3..8,NM");
-    //state_set_random(state, 0.95);
+    config_t *config = create_config(1000, "R1,C2,M1,S4..8,B4..8,NM");
+    //config_set_random(config, 0.95);
 
-    state_set_ball(state, 0, 0, 10);
+    config_set_ball(config, 0, 0, 10);
 
-    mainLoop(win_terrain, state);
+    mainLoop(win_terrain, config);
     endwin();
     return 0;
 }
