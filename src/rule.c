@@ -66,6 +66,10 @@ void rule_apply(config_t *config) {
     }
 
     free_terrain(config->terrain, config->radius);
+    free(config->terrain);
     config->terrain = tmp_config->terrain;
     config->generation++;
+    free(tmp_config);
+    //tmp_config->terrain = NULL;
+    //free_config(tmp_config);
 }

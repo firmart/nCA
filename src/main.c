@@ -15,7 +15,11 @@
 #include <math.h>
 #include <time.h>
 
+#include <getopt.h>
+
 #include "proto.h"
+
+#define NCA_VERSION "0.0.1"
 
 /* Globals */
 
@@ -84,7 +88,7 @@ void mainLoop(WINDOW *win_terrain, config_t *config) {
         mvwprintw(win_info, 12, 5, "born : %d to %d", config->rule->b_min, config->rule->b_max);
         //TODO: add 'C' for circular
         mvwprintw(win_info, 13, 5, "neighborhood_type : %s", config->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
-        mvwprintw(win_info, 14, 5, "xterm : %d %d %d %d", config->palette[0], config->palette[1], config->palette[2], config->palette[3]);
+        //mvwprintw(win_info, 14, 5, "xterm : %d %d %d %d", config->palette[0], config->palette[1], config->palette[2], config->palette[3]);
         //neighbor_print(win_info, config, 14, 2);
         wrefresh(win_info);
     }
@@ -93,7 +97,63 @@ void mainLoop(WINDOW *win_terrain, config_t *config) {
 
 int main(int argc, char *argv[]) {
 
+    const char *optstring = "vhr:";
+    int c;
+
+    struct option opts[] = {
+        {"version", 0, NULL, 'v'},
+        {"help", 0, NULL, 'h'},
+        {"usage", 0, NULL, 'u'},
+        {"rule", 1, NULL, 'r'},
+    };
+
+    char *rule_str = NULL;
+
+    /* options parsing */
+    while ((c = getopt_long(argc, argv, optstring, opts, NULL)) != -1) {
+        switch (c) {
+
+            case 'r':
+                rule_str = strdup(optarg);
+                break;
+
+            case 'v':
+                printf("version is %s\n", NCA_VERSION);
+                exit(EXIT_SUCCESS);
+                break;
+
+            case 'h':
+                //print_help();
+                break;
+
+            case '?':
+                printf("unknown option\n");
+                break;
+
+            case ':':
+                break;
+
+            case 0 :
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    /* post-processing of options */
+
+    /* Conway's game by default */
+    if (!rule_str) {
+        rule_str = strdup("R1,C2,M0,S2..3,B3..3,NM");
+    }
+
     init();
+
+
+    config_t *config = create_config(300, rule_str);
+    //config_set_random(config, 0.95);
+    config_set_ball(config, 0, 0, 16);
 
     WINDOW *win_terrain = newwin(LINES - 1, LINES * 2, 0, 2);
     win_show(win_terrain, "Terrain navigation", 1);
@@ -101,12 +161,12 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    config_t *config = create_config(300, "R1,C20,M0,S2..3,B3..3,NM");
-    //config_set_random(config, 0.95);
-
-    config_set_ball(config, 0, 0, 5);
-
     mainLoop(win_terrain, config);
+
     endwin();
+
+    free_config(config);
+    free(rule_str);
+
     return 0;
 }

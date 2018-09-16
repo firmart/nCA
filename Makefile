@@ -12,4 +12,4 @@ all: $(OBJECTS)
 	$(CC) $^ -o $(BIN) $(LIB) $(CFLAGS)
 
 $(OBJ)/%.o: $(SRC)/%.c
-	$(CC) -I$(SRC) -c $< -o $@
+	$(CC) -I$(SRC) -c $< -o $@ $(CFLAGS)

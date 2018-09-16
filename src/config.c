@@ -123,7 +123,7 @@ void free_config(config_t *config) {
     //    free(config->neighborhood[i]);
     //}
 
-    free_terrain(config->terrain, config->radius);
+    if(config->terrain) free_terrain(config->terrain, config->radius);
     free(config->terrain);
     free(config->palette);
     free(config->rule_str);
