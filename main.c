@@ -66,6 +66,7 @@ typedef struct config_t {
     int population;
     char *rule_str;
     rule_t *rule;
+    int* palette;
     int **neighborhood;
 } config_t;
 
@@ -74,7 +75,7 @@ typedef struct config_t {
 int config_getyx(config_t *config, int y, int x) ;
 void config_setyx(config_t *config, int y, int x, int value) ;
 int **create_terrain(int radius) ;
-void free_terrain(int** terrain, int radius) ;
+void free_terrain(int **terrain, int radius) ;
 
 /* Globals */
 
@@ -84,14 +85,9 @@ WINDOW *win_info;
 
 void init_colors() {
 
-    init_pair(1, -1, COLOR_BLACK   );
-    init_pair(2, -1, COLOR_RED     );
-    init_pair(3, -1, COLOR_GREEN   );
-    init_pair(4, -1, COLOR_YELLOW  );
-    init_pair(5, -1, COLOR_BLUE    );
-    init_pair(6, -1, COLOR_MAGENTA );
-    init_pair(7, -1, COLOR_CYAN    );
-    init_pair(8, -1, COLOR_WHITE   );
+    for (int i = 0 ; i < COLORS; ++i) {
+        init_pair(i + 1, -1, i);
+    }
 
 }
 
@@ -102,7 +98,7 @@ void init() {
     start_color();         /* use colors                          */
     use_default_colors();  /* use terminal default colors when we
                               initialize color in pair with -1    */
-    cbreak();              
+    cbreak();
     //raw();                 /* raw mode                            */
     noecho();              /* do not echo user input              */
     keypad(stdscr, TRUE);  /* enable functional keys              */
@@ -115,8 +111,21 @@ void init() {
 
 /* Neighborhood-related functions */
 
-int dist_manhattan(int x1, int y1, int x2, int y2) {
-    return abs(y1 - y2) + abs(x1 - x2);
+//TODO: add Euclidian distance
+
+int dist_manhattan2d(int x1, int y1, int x2, int y2) {
+    return abs(x1 - x2) + abs(y1 - y2);
+}
+
+int dist_manhattan3d(int x1, int y1, int z1, int x2, int y2, int z2) {
+    return abs(x1 - x2) + abs(y1 - y2) + abs(z1 - z2);
+}
+
+int dist_euclidian(int x1, int y1, int x2, int y2) {
+    double dx = x1 - x2;
+    double dy = y1 - y2;
+    double dist = sqrt(dx*dx + dy*dy);
+    return dist;
 }
 
 int **neighbor_create(rule_t *rule) {
@@ -139,7 +148,7 @@ int **neighbor_create(rule_t *rule) {
                 }
             }
 
-            if (rule->neighborhood_type == 'N' && dist_manhattan(i, j, rule->range, rule->range) <= rule->range) {
+            if (rule->neighborhood_type == 'N' && dist_manhattan2d(i, j, rule->range, rule->range) <= rule->range) {
                 neighborhood[i][j] = 1;
 
             } else if (rule->neighborhood_type == 'M') {
@@ -173,7 +182,7 @@ int neighbor_count(config_t *config, int y, int x) {
 }
 
 
-void neighbor_print(WINDOW *win, config_t* config, int sy, int sx) {
+void neighbor_print(WINDOW *win, config_t *config, int sy, int sx) {
 
     int height = 0, width = 0;
     getmaxyx(win, height, width);
@@ -194,7 +203,11 @@ void neighbor_print(WINDOW *win, config_t* config, int sy, int sx) {
 rule_t *rule_create(char *rule_str) {
     rule_t *rule = malloc(sizeof(rule_t));
     sscanf(rule_str, "R%d,C%d,M%d,S%d..%d,B%d..%d,N%c", &rule->range, &rule->n_states, &rule->middle_included, &rule->s_min, &rule->s_max, &rule->b_min, &rule->b_max, &rule->neighborhood_type);
-    if (rule->n_states < 2) rule->n_states = 2;
+
+    if (rule->n_states < 2) {
+        rule->n_states = 2;
+    }
+
     return rule;
 }
 
@@ -203,7 +216,7 @@ void rule_apply(config_t *config) {
     int size = 2 * config->radius + 1;
 
     /* create temporary config and terrain */
-    config_t* tmp_config = malloc(sizeof(config_t));
+    config_t *tmp_config = malloc(sizeof(config_t));
     memcpy(tmp_config, config, sizeof(config_t));
 
     tmp_config->terrain = create_terrain(config->radius);
@@ -214,8 +227,8 @@ void rule_apply(config_t *config) {
     }
 
     /* compute next generation */
-    for(int i = -config->radius; i <= config->radius; ++i) {
-        for(int j = -config->radius; j <= config->radius; ++j) {
+    for (int i = -config->radius; i <= config->radius; ++i) {
+        for (int j = -config->radius; j <= config->radius; ++j) {
             int nc = neighbor_count(config, i, j);
             int st = config_getyx(config, i, j);
 
@@ -223,13 +236,18 @@ void rule_apply(config_t *config) {
             if (st) {
                 if (nc >= config->rule->s_min && nc <= config->rule->s_max) {
                     continue;
+
                 } else {
                     int new_st = (st + 1) % config->rule->n_states;
                     config_setyx(tmp_config, i, j, new_st);
-                    if (new_st == 0) config->population--;
+
+                    if (new_st == 0) {
+                        config->population--;
+                    }
 
                 }
-            } 
+            }
+
             /* dead case */
             else {
                 if (nc >= config->rule->b_min && nc <= config->rule->b_max) {
@@ -245,6 +263,64 @@ void rule_apply(config_t *config) {
     config->terrain = tmp_config->terrain;
     config->generation++;
 }
+
+/* pallette-related functions */
+
+
+int rgb2xterm(int r, int g, int b) {
+
+    int c[6] = {0, 95, 135, 175, 215, 255}; 
+    int rlast = 255, glast = 255, blast = 255;
+    int rindex = -1, gindex = -1, bindex = -1;
+
+    for (int i = 0; i < 6; i++) {
+        if (abs(r - c[i]) <= rlast) {
+            rlast = abs(r - c[i]);
+        } else if(rindex < 0) rindex = i - 1;
+        
+
+        if (abs(g - c[i]) <= glast) {
+            glast = abs(g - c[i]);
+        } else if(gindex < 0) gindex = i - 1;
+
+        if (abs(b - c[i]) <= blast) {
+            blast = abs(b - c[i]);
+        } else if(bindex < 0) bindex = i - 1;
+
+    }
+
+    if (rindex == -1) rindex = 5;
+    if (gindex == -1) gindex = 5;
+    if (bindex == -1) bindex = 5;
+
+    int cdist = dist_manhattan3d(r, g, b, c[rindex], c[gindex], c[bindex]);
+
+    int temp = -1, vtemp = 255*3;
+    for(int i = 0; i < 24; ++i) {
+        int v = 8 + 10 * i;
+        int vdist = dist_manhattan3d(r, g, b, v, v, v);
+        if (vdist < cdist && vdist < vtemp) {
+            temp = i;
+            vtemp = vdist;
+        }
+    }
+    if (temp != -1) return 232 + temp;
+
+    return rindex * 36 + gindex * 6 + bindex + 1 + 15;
+    
+}
+
+int* palette_create(int n_states) {
+    int* palette = malloc(n_states * sizeof(int));
+    int rl = 0, gl= 0, bl = 255; /* gradient left */
+    int rr = 255, gr= 0, br = 0; /* gradient right */
+    palette[0] = rgb2xterm(255, 255, 255); /* background/dead cell */
+    for (int i = 1; i < n_states; ++i) {
+        palette[i] = rgb2xterm(rl + (i - 1) * ((rr - rl)/(n_states -2)), gl + (i-1)*((gr - gl)/(n_states -2)), bl + (i-1)*((br - bl)/(n_states -2))) + 1;
+    }
+    return palette;
+}
+
 
 /* State-related functions */
 
@@ -264,7 +340,7 @@ void config_print(WINDOW *win, config_t *config, int cy, int cx) {
         for (int j = 0; j < width - 2; ++j) {
             int value = config_getyx(config, - i - cy + (height - 3) / 2, j - cx - (width - 1) / 2) ;
             mvwprintw(win, sy + i, sx + j,  "%d", value % 10);
-            mvwchgat(win, sy + i, sx + j, 1, 0, value > 0 ? 5 : 0, NULL);
+            mvwchgat(win, sy + i, sx + j, 1, 0, config->palette[value], NULL);
         }
     }
 
@@ -296,13 +372,14 @@ void config_set_frontier(config_t *config, int fr) {
         config_setyx(config, fr, i, 1);
         config_setyx(config, -fr, i, 1);
     }
+
     config->population = fr * 8 ;
 }
 
 void config_set_ball(config_t *config, int y, int x, int r) {
     for (int i = x - r; i <= x + r; ++i) {
         for (int j = y - r; j <= y + r; ++j) {
-            if (dist_manhattan(x, y, i, j) <= r) {
+            if (dist_euclidian(x, y, i, j) <= r) {
                 config_setyx(config, j, i, 1);
                 config->population++;
             }
@@ -310,11 +387,12 @@ void config_set_ball(config_t *config, int y, int x, int r) {
     }
 }
 
-void config_set_random(config_t* config, double prob) {
+void config_set_random(config_t *config, double prob) {
     for (int i = -config->radius; i <= config->radius; i++) {
         for (int j = -config->radius; j <= config->radius; j++) {
             double rd = (double) rand() / RAND_MAX;
-            if (rd > prob) { 
+
+            if (rd > prob) {
                 config_setyx(config, i, j, (rand() % (config->rule->n_states - 1)) + 1);
                 config->population++;
             }
@@ -334,7 +412,7 @@ int **create_terrain(int radius) {
     return terrain;
 }
 
-config_t *create_config(int radius, char* rulestring) {
+config_t *create_config(int radius, char *rulestring) {
     config_t *config = malloc(sizeof(config_t));
     config->terrain_mode = 1; /* temporarily just support wall mode */
     config->rule_str = strdup(rulestring); /* temporarily just support Conway's game of life */
@@ -344,15 +422,17 @@ config_t *create_config(int radius, char* rulestring) {
     config->generation = 0;
     config->population = 0;
     config->terrain = create_terrain(radius);
+    config->palette = palette_create(config->rule->n_states);
     return config;
 }
 
-void free_terrain(int** terrain, int radius) {
+void free_terrain(int **terrain, int radius) {
     int size = 2 * radius + 1;
+
     for (int i = 0; i < size; ++i) {
         free(terrain[i]);
     }
-    
+
 }
 
 void free_config(config_t *config) {
@@ -364,6 +444,7 @@ void free_config(config_t *config) {
 
     free_terrain(config->terrain, config->radius);
     free(config->terrain);
+    free(config->palette);
     free(config->rule_str);
     free(config->rule);
     free(config);
@@ -393,7 +474,7 @@ void mainLoop(WINDOW *win_terrain, config_t *config) {
     config_print(win_terrain, config, cy, cx);
     wrefresh(win_terrain);
 
-    while ((c = getch()) != 'q') {
+    while ((c = getch()) != CTRL('q')) {
 
         switch (c) {
 
@@ -448,8 +529,10 @@ void mainLoop(WINDOW *win_terrain, config_t *config) {
         mvwprintw(win_info, 10, 5, "middle included : %s", config->rule->middle_included ? "true" : "false");
         mvwprintw(win_info, 11, 5, "survive : %d to %d", config->rule->s_min, config->rule->s_max);
         mvwprintw(win_info, 12, 5, "born : %d to %d", config->rule->b_min, config->rule->b_max);
+        //TODO: add 'C' for circular
         mvwprintw(win_info, 13, 5, "neighborhood_type : %s", config->rule->neighborhood_type == 'M' ? "Moore" : "von Neumann");
-        neighbor_print(win_info, config, 13, 2);
+        mvwprintw(win_info, 14, 5, "xterm : %d %d %d %d", config->palette[0], config->palette[1], config->palette[2], config->palette[3]);
+        //neighbor_print(win_info, config, 14, 2);
         wrefresh(win_info);
     }
 }
@@ -503,6 +586,7 @@ void win_show(WINDOW *win, char *label, int label_color) {
 }
 
 
+
 int main(int argc, char *argv[]) {
 
     init();
@@ -513,10 +597,10 @@ int main(int argc, char *argv[]) {
     win_info = newwin(LINES / 2, COLS / 2, 0, LINES * 2 + 5);
     win_show(win_info, "Debug window", 1);
 
-    config_t *config = create_config(1000, "R1,C2,M1,S4..8,B4..8,NM");
+    config_t *config = create_config(1000, "R1,C3,M1,S3..8,B3..8,NM");
     //config_set_random(config, 0.95);
 
-    config_set_ball(config, 0, 0, 10);
+    config_set_ball(config, 0, 0, 5);
 
     mainLoop(win_terrain, config);
     endwin();
