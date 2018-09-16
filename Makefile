@@ -1,7 +1,15 @@
 BIN=nCA
-SCR=main.c 
 LIB=-lncurses -lpanel -lm
 CFLAGS=-g
 
-$(BIN): $(SCR)
-	$(CC) -o $@ $< $(LIB) $(CFLAGS)
+SRC := src
+OBJ := obj
+
+SOURCES := $(wildcard $(SRC)/*.c)
+OBJECTS := $(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
+
+all: $(OBJECTS)
+	$(CC) $^ -o $(BIN) $(LIB) $(CFLAGS)
+
+$(OBJ)/%.o: $(SRC)/%.c
+	$(CC) -I$(SRC) -c $< -o $@
