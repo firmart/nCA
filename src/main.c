@@ -105,6 +105,8 @@ int main(int argc, char *argv[]) {
         {"help", 0, NULL, 'h'},
         {"usage", 0, NULL, 'u'},
         {"rule", 1, NULL, 'r'},
+        {"color-start", 1, NULL, 'c'},
+        {"color-end", 1, NULL, 'c'},
     };
 
     char *rule_str = NULL;

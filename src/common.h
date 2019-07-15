@@ -36,4 +36,10 @@ typedef struct config_t {
     int **neighborhood;
 } config_t;
 
+typedef struct rgb_t {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+} rgb_t;
+
 #endif /* ifndef COMMON_H */

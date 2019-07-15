@@ -4,8 +4,9 @@
 
 /* palette-related functions */
 
-int rgb2xterm(int r, int g, int b) {
+int rgb2xterm(rgb_t* rgb) {
 
+    int r = rgb->r, int g = rgb->g, int b = rgb->b;
     int c[6] = {0, 95, 135, 175, 215, 255}; 
     int rlast = 255, glast = 255, blast = 255;
     int rindex = -1, gindex = -1, bindex = -1;
@@ -47,10 +48,16 @@ int rgb2xterm(int r, int g, int b) {
     
 }
 
-int* palette_create(int n_states) {
+int* palette_create(int n_states, rgb_t* color_start, rgb_t* color_end) {
     int* palette = malloc(n_states * sizeof(int));
     int rl = 255, gl= 0, bl = 0; /* gradient left */
     int rr = 0, gr= 0, br = 0; /* gradient right */
+    if (!color_start) {
+        rl = color_start->r;
+        gl = color_start->r;
+        rl = color_start->r;
+    }
+
     palette[0] = rgb2xterm(255, 255, 255) + 1; /* background/dead cell */
 
     if (n_states > 2) {
