@@ -11,3 +11,9 @@ ncurses Cellular Automata
 ### Conway's Game of Life
 
 `./nCA -r "R1,C0,M0,S2..3,B3..3,NM"`
+
+## Gnarl
+
+`./nCA -r R1,C0,M1,S1..1,B1..1,NN`
+
+![Gnarl on Termit](img/screenshot-termit-R1,C0,M1,S1..1,B1..1,NN.png)
